@@ -9,7 +9,7 @@
 #import <limits.h>
 #import <mach-o/loader.h>
 #import <mach-o/dyld.h>
-#import <mach/vm_statistics.h>
+#import <mach/mach.h>
 #import <sys/sysctl.h>
 #import <Security/Security.h>
 #import <objc/message.h>
