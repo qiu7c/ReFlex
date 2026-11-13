@@ -3,6 +3,8 @@
 #import "FLEXUtility.h"
 #import "FLEXManager+Private.h"
 #import "FLEXExplorerViewController.h"
+#import "x/ClassDump/UCClassDumpTool.h"
+#import "x/ClassDump/CDHeaderDumper.h"
 #import <arpa/inet.h>
 #import <objc/runtime.h>
 
@@ -30,7 +32,7 @@ static NSArray<NSString *> *ReFlexMethodNames(Class cls) {
     return [names sortedArrayUsingSelector:@selector(compare:)];
 }
 
-static NSData *ReFlexPageJSON(BOOL includeRuntime, NSError **error) {
+static NSData *ReFlexPageJSON(BOOL includeRuntime, NSString *headerName, NSError **error) {
     UIViewController *page = FLEXUtility.appKeyWindow.rootViewController;
     while (page) {
         UIViewController *next = page.presentedViewController;
@@ -93,12 +95,28 @@ static NSData *ReFlexPageJSON(BOOL includeRuntime, NSError **error) {
                 }
                 details[@"touchUpInsideActions"] = actions;
             }
+            Class selectionClass = object_getClass(selection);
+            Ivar delegateIvar = class_getInstanceVariable(selectionClass, "_delegate");
+            if (!delegateIvar) {
+                delegateIvar = class_getInstanceVariable(selectionClass, "delegate");
+            }
+            if (delegateIvar && ivar_getTypeEncoding(delegateIvar)[0] == '@') {
+                id delegate = object_getIvar(selection, delegateIvar);
+                if (delegate) {
+                    details[@"delegateClass"] = NSStringFromClass(object_getClass(delegate));
+                }
+            }
             snapshot[@"selectedView"] = details;
         }
         snapshot[@"runtime"] = @{
             @"instanceMethods": ReFlexMethodNames(controllerClass),
             @"classMethods": ReFlexMethodNames(object_getClass(controllerClass)),
         };
+    }
+    if (headerName) {
+        NSString *name = headerName.length ? headerName : NSStringFromClass(controllerClass);
+        snapshot[@"classDumpHeader"] = [UCClassDumpTool headerForClassName:name] ?:
+            [CDHeaderDumper headerForProtocolName:name];
     }
     return [NSJSONSerialization dataWithJSONObject:snapshot options:NSJSONWritingPrettyPrinted error:error];
 }
@@ -114,7 +132,7 @@ FLEXGlobalsEntry *ReFlexPageExportEntry(void) {
     return [FLEXGlobalsEntry entryWithNameFuture:^{ return @"导出当前页面"; }
         action:^(__kindof UITableViewController *host) {
             NSError *error = nil;
-            NSData *json = ReFlexPageJSON(NO, &error);
+            NSData *json = ReFlexPageJSON(NO, nil, &error);
             if (json) {
                 NSURL *directory = [NSURL fileURLWithPath:
                     [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString]
@@ -253,18 +271,30 @@ FLEXGlobalsEntry *ReFlexLANSendEntry(void) {
                         [[session dataTaskWithURL:pollURL completionHandler:^(NSData *data, NSURLResponse *response, NSError *failure) {
                             if (ReFlexLANSession != session ||
                                 UIApplication.sharedApplication.applicationState != UIApplicationStateActive ||
-                                [(NSHTTPURLResponse *)response statusCode] != 200 || data.length != 32) {
+                                [(NSHTTPURLResponse *)response statusCode] != 200 || data.length == 0) {
                                 inFlight = NO;
                                 return;
                             }
                             NSString *requestID = [[NSString alloc] initWithData:data encoding:NSASCIIStringEncoding];
-                            if (!requestID || [requestID rangeOfString:@"^[0-9a-f]{32}$"
+                            NSString *headerName = nil;
+                            if ([requestID hasPrefix:@"header:"]) {
+                                NSArray<NSString *> *parts = [requestID componentsSeparatedByString:@":"];
+                                if (parts.count != 3 || (parts[1].length &&
+                                    [parts[1] rangeOfString:@"^[A-Za-z_][A-Za-z0-9_.]{0,255}$"
+                                        options:NSRegularExpressionSearch].location == NSNotFound)) {
+                                    inFlight = NO;
+                                    return;
+                                }
+                                headerName = parts[1];
+                                requestID = parts[2];
+                            }
+                            if (requestID.length != 32 || [requestID rangeOfString:@"^[0-9a-f]{32}$"
                                 options:NSRegularExpressionSearch].location == NSNotFound) {
                                 inFlight = NO;
                                 return;
                             }
                             NSError *error = nil;
-                            NSData *json = ReFlexPageJSON(YES, &error);
+                            NSData *json = ReFlexPageJSON(YES, headerName, &error);
                             if (!json) {
                                 inFlight = NO;
                                 return;

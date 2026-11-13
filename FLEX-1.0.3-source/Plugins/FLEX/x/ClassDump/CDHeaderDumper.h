@@ -28,6 +28,7 @@ typedef void (^CDDumpCompletionBlock)(NSURL *_Nullable zipURL, NSError *_Nullabl
 + (void)dumpHeadersZipWithProgress:(CDDumpProgressBlock)progress
                         completion:(CDDumpCompletionBlock)completion;
 
++ (nullable NSString *)headerForProtocolName:(NSString *)name;
 + (nullable NSString *)headerForClassName:(NSString *)className;
 
 + (nullable Class)classForName:(NSString *)className;

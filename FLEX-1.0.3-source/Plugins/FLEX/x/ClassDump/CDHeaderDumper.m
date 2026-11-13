@@ -794,6 +794,11 @@ static uint32_t _cachedImageCount = 0;
     return cls;
 }
 
++ (NSString *)headerForProtocolName:(NSString *)name {
+    Protocol *protocol = objc_getProtocol(name.UTF8String);
+    return protocol ? CDProtocolHeader(protocol) : nil;
+}
+
 + (NSString *)headerForClassName:(NSString *)className {
     if (className.length == 0) return nil;
     

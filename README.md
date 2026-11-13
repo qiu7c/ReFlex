@@ -32,6 +32,9 @@ JSON 包含 schemaVersion、bundleIdentifier、controllerClass、rootView。每�
 
 - `read_page_snapshot` 每次调用都获取手机此刻的控制器类名和 UIKit 控件树。使用 FLEX 选中当前页面内的控件后，结果还会包含 `selectedView`，其中有类名、从根节点起的子视图索引、窗口坐标，以及可用的按钮标题和点击事件方法名。
 - `inspect_controller_runtime` 也会刷新页面，返回当前控制器类自身的方法选择器。`query` 可按名称片段筛选。
+- `class_dump_current_controller` 调用手机现有 ClassDump，返回此刻页面控制器的 Objective-C 接口头文件。需要更新手机端和电脑端。
+- `class_dump_class` 接收 `class_name`，按完整名称查询宿主进程中的 Objective-C 类或协议。协议沿用原 ClassDump 的导出格式，协议方法类型可能以 `id` 占位。
+- `inspect_selected_view` 返回选中控件信息。若控件通过 `_delegate` 或 `delegate` 对象实例变量保存委托，结果也会返回其运行时类名。
 
 换页后让 AI 再读取一次即可。手机关闭会话、宿主 App 退到后台或连接失败时，电脑等待约 8 秒后返回错误。
 

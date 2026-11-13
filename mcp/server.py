@@ -24,6 +24,7 @@ def main() -> None:
     server = FastMCP("ReFlex")
     condition = Condition()
     pending = None
+    header_name = None
     latest = None
     receiver = None
 
@@ -54,8 +55,7 @@ def main() -> None:
                     self.send_error(HTTPStatus.NOT_FOUND)
                     return
                 with condition:
-                    request_id = pending
-                body = (request_id or "").encode("ascii")
+                    body = ((f"header:{header_name}:" if header_name is not None else "") + pending).encode("ascii") if pending else b""
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -95,11 +95,11 @@ def main() -> None:
         receiver = ThreadingHTTPServer((str(args.listen), args.port), SnapshotReceiver)
         Thread(target=receiver.serve_forever, daemon=True).start()
 
-    @server.tool()
-    def read_page_snapshot() -> dict:
-        """Fetch the phone's current UIKit page and selected control, or read the configured local export."""
-        nonlocal pending, latest
+    def fetch_snapshot(class_dump: str | None = None) -> dict:
+        nonlocal pending, latest, header_name
         if args.snapshot is not None:
+            if class_dump is not None:
+                raise ValueError("ClassDump requires a live ReFlex LAN session.")
             snapshot = json.loads(args.snapshot.read_text(encoding="utf-8"))
             if not valid_snapshot(snapshot):
                 raise ValueError("Expected a ReFlex page snapshot with schemaVersion 1.")
@@ -108,6 +108,7 @@ def main() -> None:
             if pending is not None:
                 raise ValueError("A page refresh is in progress. Retry in a moment.")
             pending = uuid4().hex
+            header_name = class_dump
             latest = None
             try:
                 if not condition.wait_for(lambda: latest is not None, timeout=8):
@@ -116,6 +117,40 @@ def main() -> None:
             finally:
                 pending = None
                 latest = None
+
+    @server.tool()
+    def read_page_snapshot() -> dict:
+        """Fetch the phone's current UIKit page and selected control, or read the configured local export."""
+        return fetch_snapshot()
+
+    @server.tool()
+    def class_dump_current_controller() -> dict:
+        """Generate an Objective-C interface header for the live page controller."""
+        snapshot = fetch_snapshot(class_dump="")
+        header = snapshot.get("classDumpHeader")
+        if not header:
+            raise ValueError("The phone could not generate a header for the current controller.")
+        return {"class": snapshot["controllerClass"], "header": header}
+
+    @server.tool()
+    def class_dump_class(class_name: str) -> dict:
+        """Generate an interface for a named Objective-C class or protocol in the current app."""
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,255}", class_name):
+            raise ValueError("Enter the exact Objective-C class or protocol name.")
+        snapshot = fetch_snapshot(class_dump=class_name)
+        header = snapshot.get("classDumpHeader")
+        if not header:
+            raise ValueError(f"No declaration found for {class_name} in the current app.")
+        return {"name": class_name, "header": header}
+
+    @server.tool()
+    def inspect_selected_view() -> dict:
+        """Read the selected UIKit control and its stored delegate class, when available."""
+        snapshot = fetch_snapshot()
+        selection = snapshot.get("selectedView")
+        if selection is None:
+            raise ValueError("Select a control on the current page using the FLEX toolbar.")
+        return {"controllerClass": snapshot["controllerClass"], "selectedView": selection}
 
     @server.tool()
     def inspect_controller_runtime(query: str = "") -> dict:
@@ -147,6 +182,8 @@ def valid_snapshot(snapshot: object) -> bool:
         and snapshot.get("schemaVersion") == 1
         and isinstance(snapshot.get("controllerClass"), str)
         and isinstance(snapshot.get("rootView"), dict)
+        and isinstance(snapshot.get("classDumpHeader", ""), str)
+        and isinstance(snapshot.get("selectedView", {}), dict)
         and (
             "runtime" not in snapshot
             or (
