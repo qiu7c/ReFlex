@@ -1,0 +1,76 @@
+name: Build ReFlex
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Theos and iOS SDK
+        shell: bash
+        run: |
+          brew install dpkg ldid
+          theos="$RUNNER_TEMP/theos"
+          git clone https://github.com/theos/theos.git "$theos"
+          git -C "$theos" checkout 8167f59de02fd32cf45b16bfcb1330dfa5c9974c
+          git -C "$theos" submodule update --init --recursive --depth 1
+          git init "$RUNNER_TEMP/reflex-sdks"
+          git -C "$RUNNER_TEMP/reflex-sdks" fetch --depth 1 https://github.com/theos/sdks.git 0222fd5413cf4b9af096f37b4621afa2688572f7
+          git -C "$RUNNER_TEMP/reflex-sdks" checkout FETCH_HEAD -- iPhoneOS15.6.sdk
+          cp -R "$RUNNER_TEMP/reflex-sdks/iPhoneOS15.6.sdk" "$theos/sdks/"
+          echo "THEOS=$theos" >> "$GITHUB_ENV"
+
+      - name: Compile and combine architecture slices
+        working-directory: FLEX-1.0.3-source/Plugins/FLEX
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/slices" "$GITHUB_WORKSPACE/dist"
+          for arch in armv7 arm64 arm64e; do
+            minimum=9.0
+            linker=()
+            case "$arch" in
+              armv7) linker=(ADDITIONAL_LDFLAGS=-Wl,-ld_classic) ;;
+              arm64e) minimum=14.0 ;;
+            esac
+            make clean THEOS_PACKAGE_SCHEME=
+            build_args=(FINALPACKAGE=1 DEBUG=0 THEOS_PACKAGE_SCHEME=
+              TARGET="iphone:clang:15.6:$minimum" ARCHS="$arch" "${linker[@]}")
+            make -j2 all "${build_args[@]}"
+            make -j1 stage "${build_args[@]}"
+            cp ".theos/_/Library/MobileSubstrate/DynamicLibraries/FLEX++.dylib" \
+              "$RUNNER_TEMP/slices/$arch.dylib"
+          done
+          universal="$GITHUB_WORKSPACE/dist/ReFlex.dylib"
+          xcrun lipo -create "$RUNNER_TEMP/slices/"*.dylib -output "$universal"
+          xcrun lipo -verify_arch armv7 arm64 arm64e "$universal"
+          codesign --force --sign - "$universal"
+          codesign --verify --all-architectures "$universal"
+          xcrun otool -arch all -L "$universal"
+          xcrun otool -arch all -L "$universal" | awk '
+            /^[[:space:]]/ && /compatibility version/ &&
+              $1 !~ /^\/usr\/lib\// && $1 !~ /^\/System\/Library\// &&
+              $1 != "@rpath/ReFlex.dylib" { print "Unexpected library dependency: " $1; bad = 1 }
+            END { exit bad }
+          '
+
+      - name: Package the same dylib for three root environments
+        shell: bash
+        run: bash .github/package-reflex.sh "$GITHUB_WORKSPACE/dist"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReFlex
+          path: |
+            dist/ReFlex.dylib
+            dist/*.deb
+          if-no-files-found: error

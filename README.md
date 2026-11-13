@@ -39,10 +39,23 @@ JSON 包含 schemaVersion、bundleIdentifier、controllerClass、rootView。每�
 
 离线导出仍可使用。启动脚本时以 JSON 文件路径作为唯一参数，即切换到文件读取模式。[MCP Python SDK 1.x](https://py.sdk.modelcontextprotocol.io/v1/)
 
-## 构建
+## 云编译
 
-iOS 端沿用压缩包内的 Theos rootless arm64 构建配置。macOS 上配置好 Xcode、iOS SDK 和 THEOS 后，在 FLEX-1.0.3-source/Plugins/FLEX 执行：
+GitHub Actions 的 Build ReFlex 工作流在推送到 main 时执行，也支持手动运行。下载名为 ReFlex 的产物，里面有一份独立的 ReFlex.dylib 和三个对应安装环境的 deb。
 
-    LC_ALL=C LANG=C make package FINALPACKAGE=1 DEBUG=0 -j1
+| 文件 | 环境 |
+| --- | --- |
+| ReFlex.dylib | 单份通用库，含 ARMv7（32 位 ARM）、arm64 和 arm64e 切片 |
+| ReFlex_1.0.3_rootful.deb | Rootful |
+| ReFlex_1.0.3_rootless.deb | Rootless |
+| ReFlex_1.0.3_roothide.deb | RootHide |
 
-当前 Windows 工作区未验证 iOS 构建或实机。沿用基线包标识，安装打包产物时会被包管理器视为同一软件包。
+三个 deb 各自包含注入过滤 plist，并复用同一份 dylib。CI 会校验切片和签名，检查系统库依赖，再从每个 deb 解包并逐字节比对 dylib。
+
+工作流使用 Xcode 16.4 和 Theos 的 iOS 15.6 SDK，arm64e 切片按 iOS 14 及以上的 ABI 构建。架构切片通过检查只证明文件包含对应的机器码。老系统上的功能兼容性和三种环境下的加载仍需实机验证。[Theos arm64e 说明](https://theos.dev/docs/arm64e-deployment)
+
+本地单架构调试可继续用 Theos。在 FLEX-1.0.3-source/Plugins/FLEX 执行：
+
+    LC_ALL=C LANG=C make stage FINALPACKAGE=1 DEBUG=0 -j1
+
+安装包沿用原包标识，包管理器会将其视为同一软件包。

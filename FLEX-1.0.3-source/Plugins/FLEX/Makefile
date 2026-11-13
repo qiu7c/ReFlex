@@ -33,7 +33,6 @@ export THEOS_PACKAGE_DIR = $(CURDIR)
 
 # Rootless
 export THEOS_PACKAGE_SCHEME = rootless
-THEOS_PACKAGE_INSTALL_PREFIX = /var/jb
 
 # 设置路径
 $(LIBRARY_NAME)_INSTALL_PATH = /Library/MobileSubstrate/DynamicLibraries
@@ -88,13 +87,11 @@ $(LIBRARY_NAME)_CFLAGS = -fobjc-arc -include flex_fishhook.h \
 $(LIBRARY_NAME)_CCFLAGS = -std=c++17 -Wno-unused-function -Wno-objc-missing-property-synthesis
 $(LIBRARY_NAME)_OBJCFLAGS = -fobjc-arc
 
-# 兼容性
-$(LIBRARY_NAME)_CFLAGS += -miphoneos-version-min=9.0
-
 include $(THEOS)/makefiles/common.mk
 include $(THEOS_MAKE_PATH)/library.mk
 
 after-stage::
+	@install_name_tool -id @rpath/ReFlex.dylib "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/$(LIBRARY_NAME).dylib"
 	@codesign --force --sign - "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/$(LIBRARY_NAME).dylib"
 	@mkdir -p "$(THEOS_STAGING_DIR)/usr/share/doc/com.pxx917144686.flex"
 	@cp ThirdPartyNotices/FLEX-LICENSE.txt ThirdPartyNotices/Capstone-LICENSE.txt "$(THEOS_STAGING_DIR)/usr/share/doc/com.pxx917144686.flex/"

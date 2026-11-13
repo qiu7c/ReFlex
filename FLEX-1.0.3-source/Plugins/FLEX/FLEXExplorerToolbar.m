@@ -93,11 +93,15 @@
         [self addSubview:self.secondRowBackground];
         
         // Buttons - 第二行
-        self.classdumpItem  = [FLEXExplorerToolbarItem itemWithTitle:@"xx.h" image:[UIImage systemImageNamed:@"doc.text.fill"]];
-        self.disassemblerItem = [FLEXExplorerToolbarItem itemWithTitle:@"反汇编" image:[UIImage systemImageNamed:@"cpu.fill"]];
-        self.decryptItem    = [FLEXExplorerToolbarItem itemWithTitle:@"抓取" image:[UIImage systemImageNamed:@"lock.open.fill"]];
-        self.filzaItem      = [FLEXExplorerToolbarItem itemWithTitle:@"Filza" image:[UIImage systemImageNamed:@"folder.fill"]];
-        self.protectionItem = [FLEXExplorerToolbarItem itemWithTitle:@"保护" image:[UIImage systemImageNamed:@"shield.fill"]];
+        BOOL hasSystemSymbols = NO;
+        if (@available(iOS 13.0, *)) {
+            hasSystemSymbols = YES;
+        }
+        self.classdumpItem  = [FLEXExplorerToolbarItem itemWithTitle:@"xx.h" image:(hasSystemSymbols ? [UIImage systemImageNamed:@"doc.text.fill"] : FLEXResources.globalsIcon)];
+        self.disassemblerItem = [FLEXExplorerToolbarItem itemWithTitle:@"反汇编" image:(hasSystemSymbols ? [UIImage systemImageNamed:@"cpu.fill"] : FLEXResources.globalsIcon)];
+        self.decryptItem    = [FLEXExplorerToolbarItem itemWithTitle:@"抓取" image:(hasSystemSymbols ? [UIImage systemImageNamed:@"lock.open.fill"] : FLEXResources.globalsIcon)];
+        self.filzaItem      = [FLEXExplorerToolbarItem itemWithTitle:@"Filza" image:(hasSystemSymbols ? [UIImage systemImageNamed:@"folder.fill"] : FLEXResources.globalsIcon)];
+        self.protectionItem = [FLEXExplorerToolbarItem itemWithTitle:@"保护" image:(hasSystemSymbols ? [UIImage systemImageNamed:@"shield.fill"] : FLEXResources.globalsIcon)];
 
         // Selected view box //
         
