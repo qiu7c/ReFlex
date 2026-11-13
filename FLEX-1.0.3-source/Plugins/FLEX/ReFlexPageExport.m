@@ -209,6 +209,8 @@ FLEXGlobalsEntry *ReFlexCallTraceEntry(void) {
 
 static NSURLSession *ReFlexLANSession;
 static NSTimer *ReFlexLANTimer;
+static NSURL *ReFlexLANPollURL;
+static NSString *ReFlexLANPollResult;
 
 @interface ReFlexLANTick : NSObject
 @property (nonatomic, copy) void (^poll)(void);
@@ -226,7 +228,8 @@ FLEXGlobalsEntry *ReFlexLANSendEntry(void) {
         action:^(__kindof UITableViewController *host) {
             if (ReFlexLANSession) {
                 UIAlertController *status = [UIAlertController alertControllerWithTitle:@"MCP 会话已开启"
-                    message:nil preferredStyle:UIAlertControllerStyleAlert];
+                    message:[NSString stringWithFormat:@"GET %@\n%@", ReFlexLANPollURL.absoluteString, ReFlexLANPollResult]
+                    preferredStyle:UIAlertControllerStyleAlert];
                 [status addAction:[UIAlertAction actionWithTitle:@"关闭会话" style:UIAlertActionStyleDefault
                     handler:^(UIAlertAction *action) {
                         ReFlexPendingTrace = nil;
@@ -235,6 +238,8 @@ FLEXGlobalsEntry *ReFlexLANSendEntry(void) {
                         ReFlexLANTimer = nil;
                         [ReFlexLANSession invalidateAndCancel];
                         ReFlexLANSession = nil;
+                        ReFlexLANPollURL = nil;
+                        ReFlexLANPollResult = nil;
                     }]];
                 [status addAction:[UIAlertAction actionWithTitle:@"返回" style:UIAlertActionStyleCancel handler:nil]];
                 [host presentViewController:status animated:YES completion:nil];
@@ -298,6 +303,9 @@ FLEXGlobalsEntry *ReFlexLANSendEntry(void) {
                     NSURLSession *session = [NSURLSession sessionWithConfiguration:configuration
                         delegate:[ReFlexLANSessionDelegate new] delegateQueue:NSOperationQueue.mainQueue];
                     ReFlexLANSession = session;
+                    NSURL *pollURL = [base URLByAppendingPathComponent:@"request"];
+                    ReFlexLANPollURL = pollURL;
+                    ReFlexLANPollResult = @"尚未发起轮询。";
                     __block BOOL inFlight = NO;
                     ReFlexLANTick *tick = [ReFlexLANTick new];
                     tick.poll = ^{
@@ -305,11 +313,29 @@ FLEXGlobalsEntry *ReFlexLANSendEntry(void) {
                             return;
                         }
                         inFlight = YES;
-                        NSURL *pollURL = [base URLByAppendingPathComponent:@"request"];
+                        if ([ReFlexLANPollResult isEqualToString:@"尚未发起轮询。"]) {
+                            ReFlexLANPollResult = @"已发起轮询，正在等待首次响应。";
+                        }
                         [[session dataTaskWithURL:pollURL completionHandler:^(NSData *data, NSURLResponse *response, NSError *failure) {
-                            if (ReFlexLANSession != session ||
-                                UIApplication.sharedApplication.applicationState != UIApplicationStateActive ||
-                                [(NSHTTPURLResponse *)response statusCode] != 200 || data.length == 0) {
+                            if (ReFlexLANSession != session) {
+                                return;
+                            }
+                            NSInteger statusCode = [(NSHTTPURLResponse *)response statusCode];
+                            NSString *result;
+                            if (failure) {
+                                result = [NSString stringWithFormat:@"%@ (%ld)\n%@", failure.domain,
+                                    (long)failure.code, failure.localizedDescription];
+                            } else if (statusCode == 200) {
+                                result = data.length ? @"HTTP 200，有待处理请求" : @"HTTP 200，无待处理请求";
+                            } else {
+                                result = statusCode ? [NSString stringWithFormat:@"HTTP %ld", (long)statusCode]
+                                    : @"未收到 HTTP 响应。";
+                            }
+                            NSString *time = [NSDateFormatter localizedStringFromDate:NSDate.date
+                                dateStyle:NSDateFormatterNoStyle timeStyle:NSDateFormatterMediumStyle];
+                            ReFlexLANPollResult = [NSString stringWithFormat:@"%@\n%@", time, result];
+                            if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive ||
+                                statusCode != 200 || data.length == 0) {
                                 inFlight = NO;
                                 return;
                             }
@@ -395,8 +421,10 @@ FLEXGlobalsEntry *ReFlexLANSendEntry(void) {
                             }] resume];
                         }] resume];
                     };
-                    ReFlexLANTimer = [NSTimer scheduledTimerWithTimeInterval:1 target:tick
+                    ReFlexLANTimer = [NSTimer timerWithTimeInterval:1 target:tick
                         selector:@selector(tick:) userInfo:nil repeats:YES];
+                    [NSRunLoop.mainRunLoop addTimer:ReFlexLANTimer forMode:NSRunLoopCommonModes];
+                    tick.poll();
                 }]];
             [host presentViewController:pairing animated:YES completion:nil];
         }];

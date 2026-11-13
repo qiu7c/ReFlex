@@ -38,6 +38,8 @@ JSON 包含 schemaVersion、bundleIdentifier、controllerClass、rootView。每�
 
 换页后让 AI 再读取一次即可。手机关闭会话、宿主 App 退到后台或连接失败时，电脑等待约 8 秒后返回错误。
 
+连接超时时，重新打开手机端「局域网 MCP」，查看最近一次轮询的请求地址、时间与结果。HTTP 401 表示服务端收到了请求但拒绝了配对码。网络失败会显示错误域和错误码。
+
 手机到电脑使用带配对码的 HTTP，数据在局域网中明文传输，适合可信网络。电脑只在指定的私有 IPv4 上监听。若连接失败，检查 Windows 防火墙是否放行专用网络上的端口，以及手机宿主 App 的局域网权限和 ATS 配置。允许对指定地址发起 HTTP 连接的配置由宿主 App 决定。[Apple 局域网权限说明](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy) · [Apple ATS 地址例外](https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity/nsexceptiondomains)
 
 离线导出仍可使用。启动脚本时以 JSON 文件路径作为唯一参数，即切换到文件读取模式。[MCP Python SDK 1.x](https://py.sdk.modelcontextprotocol.io/v1/)
