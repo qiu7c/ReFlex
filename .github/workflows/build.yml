@@ -52,7 +52,7 @@ jobs:
           done
           universal="$GITHUB_WORKSPACE/dist/ReFlex.dylib"
           xcrun lipo -create "$RUNNER_TEMP/slices/"*.dylib -output "$universal"
-          xcrun lipo -verify_arch armv7 arm64 arm64e "$universal"
+          xcrun lipo "$universal" -verify_arch armv7 arm64 arm64e
           codesign --force --sign - "$universal"
           codesign --verify --all-architectures "$universal"
           xcrun otool -arch all -L "$universal"
