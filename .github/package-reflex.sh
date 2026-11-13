@@ -25,7 +25,7 @@ for environment in rootful rootless roothide; do
     {
         printf 'Package: %s\nVersion: %s\nArchitecture: %s\n' "$package" "$version" "$architecture"
         printf 'Name: ReFlex\nSection: Tweaks\n'
-        printf 'Maintainer: qiu7c\nAuthor: FLEX Team & pxx917144686\n'
+        printf 'Maintainer: qiu7c\n'
         printf 'Description: UIKit inspection and local network MCP\n'
         printf 'Depends: firmware (>= %s), mobilesubstrate\n' "$minimum"
     } > "$root/DEBIAN/control"

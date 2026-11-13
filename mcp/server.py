@@ -1,4 +1,5 @@
 import argparse
+import base64
 import hmac
 import json
 import re
@@ -24,7 +25,7 @@ def main() -> None:
     server = FastMCP("ReFlex")
     condition = Condition()
     pending = None
-    header_name = None
+    request_prefix = ''
     latest = None
     receiver = None
 
@@ -55,7 +56,7 @@ def main() -> None:
                     self.send_error(HTTPStatus.NOT_FOUND)
                     return
                 with condition:
-                    body = ((f"header:{header_name}:" if header_name is not None else "") + pending).encode("ascii") if pending else b""
+                    body = (request_prefix + pending).encode("ascii") if pending else b""
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -78,7 +79,12 @@ def main() -> None:
                 except (UnicodeError, ValueError, RecursionError):
                     self.send_error(HTTPStatus.BAD_REQUEST, "Invalid JSON")
                     return
-                if not valid_snapshot(snapshot):
+                trace = snapshot.get("callTrace") if isinstance(snapshot, dict) else None
+                if not valid_snapshot(snapshot) and not (
+                    isinstance(trace, dict) and trace.get("status") in (
+                        "pending_confirmation", "idle", "waiting", "captured", "expired", "cancelled"
+                    )
+                ):
                     self.send_error(HTTPStatus.BAD_REQUEST, "Invalid ReFlex snapshot")
                     return
                 with condition:
@@ -95,11 +101,11 @@ def main() -> None:
         receiver = ThreadingHTTPServer((str(args.listen), args.port), SnapshotReceiver)
         Thread(target=receiver.serve_forever, daemon=True).start()
 
-    def fetch_snapshot(class_dump: str | None = None) -> dict:
-        nonlocal pending, latest, header_name
+    def fetch_snapshot(class_dump: str | None = None, trace_payload: str | None = None) -> dict:
+        nonlocal pending, latest, request_prefix
         if args.snapshot is not None:
-            if class_dump is not None:
-                raise ValueError("ClassDump requires a live ReFlex LAN session.")
+            if class_dump is not None or trace_payload is not None:
+                raise ValueError("This tool requires a live ReFlex LAN session.")
             snapshot = json.loads(args.snapshot.read_text(encoding="utf-8"))
             if not valid_snapshot(snapshot):
                 raise ValueError("Expected a ReFlex page snapshot with schemaVersion 1.")
@@ -108,7 +114,11 @@ def main() -> None:
             if pending is not None:
                 raise ValueError("A page refresh is in progress. Retry in a moment.")
             pending = uuid4().hex
-            header_name = class_dump
+            request_prefix = ""
+            if trace_payload is not None:
+                request_prefix = f"trace:{trace_payload}:"
+            elif class_dump is not None:
+                request_prefix = f"header:{class_dump}:"
             latest = None
             try:
                 if not condition.wait_for(lambda: latest is not None, timeout=8):
@@ -149,7 +159,7 @@ def main() -> None:
         snapshot = fetch_snapshot()
         selection = snapshot.get("selectedView")
         if selection is None:
-            raise ValueError("Select a control on the current page using the FLEX toolbar.")
+            raise ValueError("Select a control on the current page using the ReFlex toolbar.")
         return {"controllerClass": snapshot["controllerClass"], "selectedView": selection}
 
     @server.tool()
@@ -167,6 +177,26 @@ def main() -> None:
                 for kind in ("instanceMethods", "classMethods")
             },
         }
+
+    @server.tool()
+    def prepare_call_trace(probe: str, fields: list[str], seconds: int = 60) -> dict:
+        """Propose a one-shot task for an explicit debug probe. Confirm it on the phone."""
+        identifier = r"[A-Za-z_][A-Za-z0-9_.]{0,63}"
+        if not (
+            re.fullmatch(identifier, probe)
+            and 1 <= len(fields) <= 16
+            and all(re.fullmatch(identifier, field) for field in fields)
+            and 5 <= seconds <= 300
+        ):
+            raise ValueError("Use an explicit probe name, 1–16 field names, and 5–300 seconds.")
+        task = {"probe": probe, "fields": fields, "seconds": seconds}
+        payload = base64.b64encode(json.dumps(task).encode("ascii")).decode("ascii")
+        return fetch_snapshot(trace_payload=payload)["callTrace"]
+
+    @server.tool()
+    def read_call_trace() -> dict:
+        """Read the current explicit probe task status and first captured metadata."""
+        return fetch_snapshot(trace_payload="")["callTrace"]
 
     try:
         server.run(transport="stdio")

@@ -47,7 +47,7 @@ jobs:
               TARGET="iphone:clang:15.6:$minimum" ARCHS="$arch" "${linker[@]}")
             make -j2 all "${build_args[@]}"
             make -j1 stage "${build_args[@]}"
-            cp ".theos/_/Library/MobileSubstrate/DynamicLibraries/FLEX++.dylib" \
+            cp ".theos/_/Library/MobileSubstrate/DynamicLibraries/ReFlex.dylib" \
               "$RUNNER_TEMP/slices/$arch.dylib"
           done
           universal="$GITHUB_WORKSPACE/dist/ReFlex.dylib"

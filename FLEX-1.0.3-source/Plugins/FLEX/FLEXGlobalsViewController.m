@@ -114,6 +114,7 @@
             @(FLEXGlobalsSectionProcessAndEvents) : @[
                 ReFlexPageExportEntry(),
                 ReFlexLANSendEntry(),
+                ReFlexCallTraceEntry(),
                 [self globalsEntryForRow:FLEXGlobalsRowSystemLog],
                 [self globalsEntryForRow:FLEXGlobalsRowBrowseRuntime],
             ],

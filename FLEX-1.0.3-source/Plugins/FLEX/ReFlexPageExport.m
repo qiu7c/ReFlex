@@ -1,4 +1,6 @@
 #import "ReFlexPageExport.h"
+#import "ReFlexCallTrace.h"
+
 #import "FLEXActivityViewController.h"
 #import "FLEXUtility.h"
 #import "FLEXManager+Private.h"
@@ -7,6 +9,8 @@
 #import "x/ClassDump/CDHeaderDumper.h"
 #import <arpa/inet.h>
 #import <objc/runtime.h>
+
+static NSDictionary *ReFlexPendingTrace;
 
 static NSDictionary *ReFlexViewNode(UIView *view) {
     NSMutableArray *children = [NSMutableArray arrayWithCapacity:view.subviews.count];
@@ -171,6 +175,38 @@ FLEXGlobalsEntry *ReFlexPageExportEntry(void) {
 
 @end
 
+FLEXGlobalsEntry *ReFlexCallTraceEntry(void) {
+    return [FLEXGlobalsEntry entryWithNameFuture:^{ return @"调用记录"; }
+        action:^(__kindof UITableViewController *host) {
+            ReFlexCallTrace *trace = ReFlexCallTrace.sharedTrace;
+            NSDictionary *task = ReFlexPendingTrace;
+            NSDictionary *result = trace.result;
+            NSDictionary *titles = @{@"idle": @"无任务", @"waiting": @"等待触发",
+                @"captured": @"已记录", @"expired": @"已过期", @"cancelled": @"已取消"};
+            NSString *message = task ? [NSString stringWithFormat:@"%@\n%@\n%ld 秒",
+                task[@"probe"], [task[@"fields"] componentsJoinedByString:@", "],
+                (long)[task[@"seconds"] integerValue]] : result[@"probe"];
+            UIAlertController *alert = [UIAlertController
+                alertControllerWithTitle:task ? @"确认调用记录" : titles[result[@"status"]]
+                message:message preferredStyle:UIAlertControllerStyleAlert];
+            if (task) {
+                [alert addAction:[UIAlertAction actionWithTitle:@"开始记录" style:UIAlertActionStyleDefault
+                    handler:^(UIAlertAction *action) {
+                        [trace armProbe:task[@"probe"] fields:[NSSet setWithArray:task[@"fields"]]
+                            lifetime:[task[@"seconds"] doubleValue]];
+                        ReFlexPendingTrace = nil;
+                    }]];
+            }
+            [alert addAction:[UIAlertAction actionWithTitle:@"取消任务" style:UIAlertActionStyleDestructive
+                handler:^(UIAlertAction *action) {
+                    ReFlexPendingTrace = nil;
+                    [trace cancel];
+                }]];
+            [alert addAction:[UIAlertAction actionWithTitle:@"返回" style:UIAlertActionStyleCancel handler:nil]];
+            [host presentViewController:alert animated:YES completion:nil];
+        }];
+}
+
 static NSURLSession *ReFlexLANSession;
 static NSTimer *ReFlexLANTimer;
 
@@ -193,6 +229,8 @@ FLEXGlobalsEntry *ReFlexLANSendEntry(void) {
                     message:nil preferredStyle:UIAlertControllerStyleAlert];
                 [status addAction:[UIAlertAction actionWithTitle:@"关闭会话" style:UIAlertActionStyleDefault
                     handler:^(UIAlertAction *action) {
+                        ReFlexPendingTrace = nil;
+                        [ReFlexCallTrace.sharedTrace cancel];
                         [ReFlexLANTimer invalidate];
                         ReFlexLANTimer = nil;
                         [ReFlexLANSession invalidateAndCancel];
@@ -277,6 +315,44 @@ FLEXGlobalsEntry *ReFlexLANSendEntry(void) {
                             }
                             NSString *requestID = [[NSString alloc] initWithData:data encoding:NSASCIIStringEncoding];
                             NSString *headerName = nil;
+                            NSDictionary *traceReply = nil;
+                            NSDictionary *newTrace = nil;
+                            BOOL traceRequest = [requestID hasPrefix:@"trace:"];
+                            if (traceRequest) {
+                                NSArray<NSString *> *parts = [requestID componentsSeparatedByString:@":"];
+                                if (parts.count != 3) {
+                                    inFlight = NO;
+                                    return;
+                                }
+                                requestID = parts[2];
+                                if (parts[1].length) {
+                                    NSData *payload = [[NSData alloc] initWithBase64EncodedString:parts[1] options:0];
+                                    id task = payload ? [NSJSONSerialization JSONObjectWithData:payload options:0 error:nil] : nil;
+                                    if (![task isKindOfClass:NSDictionary.class] ||
+                                        ![task[@"probe"] isKindOfClass:NSString.class] ||
+                                        ![task[@"fields"] isKindOfClass:NSArray.class] ||
+                                        ![task[@"seconds"] isKindOfClass:NSNumber.class]) {
+                                        inFlight = NO;
+                                        return;
+                                    }
+                                    NSArray *fields = task[@"fields"];
+                                    double seconds = [task[@"seconds"] doubleValue];
+                                    NSString *pattern = @"^[A-Za-z_][A-Za-z0-9_.]{0,63}$";
+                                    BOOL valid = fields.count >= 1 && fields.count <= 16 &&
+                                        seconds >= 5 && seconds <= 300 &&
+                                        [(NSString *)task[@"probe"] rangeOfString:pattern options:NSRegularExpressionSearch].location != NSNotFound;
+                                    for (id field in fields) {
+                                        valid = valid && [field isKindOfClass:NSString.class] &&
+                                            [(NSString *)field rangeOfString:pattern options:NSRegularExpressionSearch].location != NSNotFound;
+                                    }
+                                    if (!valid) {
+                                        inFlight = NO;
+                                        return;
+                                    }
+                                    newTrace = task;
+                                }
+
+                            }
                             if ([requestID hasPrefix:@"header:"]) {
                                 NSArray<NSString *> *parts = [requestID componentsSeparatedByString:@":"];
                                 if (parts.count != 3 || (parts[1].length &&
@@ -293,8 +369,18 @@ FLEXGlobalsEntry *ReFlexLANSendEntry(void) {
                                 inFlight = NO;
                                 return;
                             }
+                            if (traceRequest) {
+                                if (newTrace) {
+                                    ReFlexPendingTrace = newTrace;
+                                }
+                                traceReply = ReFlexPendingTrace
+                                    ? @{@"status": @"pending_confirmation", @"probe": ReFlexPendingTrace[@"probe"]}
+                                    : ReFlexCallTrace.sharedTrace.result;
+                            }
                             NSError *error = nil;
-                            NSData *json = ReFlexPageJSON(YES, headerName, &error);
+                            NSData *json = traceReply
+                                ? [NSJSONSerialization dataWithJSONObject:@{@"callTrace": traceReply} options:0 error:&error]
+                                : ReFlexPageJSON(YES, headerName, &error);
                             if (!json) {
                                 inFlight = NO;
                                 return;

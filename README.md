@@ -1,10 +1,10 @@
 # ReFlex
 
-基于随附的 FLEX++ 1.0.3 汉化源码。首版聚焦 UIKit 页面排查。
+ReFlex 是基于 FLEX 增强的独立 UIKit 调试插件。
 
 ## 页面导出
 
-打开 FLEX 后进入「菜单 → 页面与调试 → 导出当前页面」，在系统分享面板保存 reflex-page.json。导出从宿主窗口的根控制器开始，沿当前模态页面、导航栈可见页面或选中的标签页定位，然后递归记录该控制器根视图下的控件。
+打开 ReFlex 后进入「菜单 → 页面与调试 → 导出当前页面」，在系统分享面板保存 reflex-page.json。导出从宿主窗口的根控制器开始，沿当前模态页面、导航栈可见页面或选中的标签页定位，然后递归记录该控制器根视图下的控件。
 
 JSON 包含 schemaVersion、bundleIdentifier、controllerClass、rootView。每个控件节点有 class、frame（父视图坐标，单位为点）、hidden（控件自己的隐藏状态）和 children。数据范围为 UIKit 视图结构。自定义容器会以其根视图为边界，WebView 的 DOM 不在 UIKit 树中。
 
@@ -30,7 +30,7 @@ JSON 包含 schemaVersion、bundleIdentifier、controllerClass、rootView。每�
 
 在手机上进入「菜单 → 页面与调试 → 局域网 MCP」，填写地址、端口和配对码，然后点「开启会话」。设置会保存。调试结束后回到同一入口点「关闭会话」。宿主 App 在前台且会话开启时，手机每秒查询电脑是否有待处理请求，收到请求后才采集页面。
 
-- `read_page_snapshot` 每次调用都获取手机此刻的控制器类名和 UIKit 控件树。使用 FLEX 选中当前页面内的控件后，结果还会包含 `selectedView`，其中有类名、从根节点起的子视图索引、窗口坐标，以及可用的按钮标题和点击事件方法名。
+- `read_page_snapshot` 每次调用都获取手机此刻的控制器类名和 UIKit 控件树。使用 ReFlex 选中当前页面内的控件后，结果还会包含 `selectedView`，其中有类名、从根节点起的子视图索引、窗口坐标，以及可用的按钮标题和点击事件方法名。
 - `inspect_controller_runtime` 也会刷新页面，返回当前控制器类自身的方法选择器。`query` 可按名称片段筛选。
 - `class_dump_current_controller` 调用手机现有 ClassDump，返回此刻页面控制器的 Objective-C 接口头文件。需要更新手机端和电脑端。
 - `class_dump_class` 接收 `class_name`，按完整名称查询宿主进程中的 Objective-C 类或协议。协议沿用原 ClassDump 的导出格式，协议方法类型可能以 `id` 占位。
@@ -41,6 +41,16 @@ JSON 包含 schemaVersion、bundleIdentifier、controllerClass、rootView。每�
 手机到电脑使用带配对码的 HTTP，数据在局域网中明文传输，适合可信网络。电脑只在指定的私有 IPv4 上监听。若连接失败，检查 Windows 防火墙是否放行专用网络上的端口，以及手机宿主 App 的局域网权限和 ATS 配置。允许对指定地址发起 HTTP 连接的配置由宿主 App 决定。[Apple 局域网权限说明](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy) · [Apple ATS 地址例外](https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity/nsexceptiondomains)
 
 离线导出仍可使用。启动脚本时以 JSON 文件路径作为唯一参数，即切换到文件读取模式。[MCP Python SDK 1.x](https://py.sdk.modelcontextprotocol.io/v1/)
+
+## 一次性调用记录
+
+在有源码的 App 调试构建中，将 ReFlexCallTrace.h 和 ReFlexCallTrace.m 纳入同一个 ReFlex 构建，由 App 的显式调试采集点在主线程调用共享实例。采集点名称和可返回的字段由 App 源码定义：
+
+    [ReFlexCallTrace.sharedTrace recordProbe:@"demo.scan"
+        metadata:@{@"receiverClass": NSStringFromClass(self.class),
+                   @"format": @"QR", @"hasRawBytes": @"yes"}];
+
+AI 调用 prepare_call_trace，参数示例为 {"probe":"demo.scan","fields":["receiverClass","format"],"seconds":60}。手机在「菜单 → 页面与调试 → 调用记录」确认后，再手动触发该采集点。AI 调用 read_call_trace 查看任务状态和首条结果。倒计时从确认时开始。可在同一菜单取消，关闭局域网会话也会清除任务。采集点和调用记录共享同一进程内的实例。
 
 ## 云编译
 
@@ -61,4 +71,4 @@ GitHub Actions 的 Build ReFlex 工作流在推送到 main 时执行，也支持
 
     LC_ALL=C LANG=C make stage FINALPACKAGE=1 DEBUG=0 -j1
 
-安装包沿用原包标识，包管理器会将其视为同一软件包。
+安装包标识为 `com.qiu7c.reflex`。

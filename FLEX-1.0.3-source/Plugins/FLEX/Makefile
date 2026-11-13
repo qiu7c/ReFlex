@@ -1,29 +1,9 @@
-PACKAGE_IDENTIFIER = com.pxx917144686.flex
-PACKAGE_NAME = FLEX++
-PACKAGE_VERSION = 1.0.3
-PACKAGE_ARCHITECTURE = arm64
-PACKAGE_REVISION = 1
-PACKAGE_SECTION = Tweaks
-PACKAGE_DEPENDS = firmware (>= 9.0)
-PACKAGE_DESCRIPTION = FLEX调试工具
-
-define Package/com.pxx917144686.flex
-  Package: com.pxx917144686.flex
-  Name: FLEX++
-  Version: 1.0.3
-  Architecture: arm64
-  Author: FLEX Team & pxx917144686修改
-  Section: Tweaks
-  Depends: firmware (>= 9.0)
-  Description: FLEX调试工具
-endef
-
 # 支持更旧版本的iOS设备(从15.6降到9.0)
 TARGET = iphone:latest:9.0
 ARCHS = arm64
 
 # 名称和类型
-LIBRARY_NAME = FLEX++
+LIBRARY_NAME = ReFlex
 
 # 动态库类型 - 兼容各种越狱环境
 LIBRARY_TYPE = dynamic
@@ -91,10 +71,8 @@ include $(THEOS)/makefiles/common.mk
 include $(THEOS_MAKE_PATH)/library.mk
 
 after-stage::
+	@cp ReFlex.plist "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/"
 	@install_name_tool -id @rpath/ReFlex.dylib "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/$(LIBRARY_NAME).dylib"
 	@codesign --force --sign - "$(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/$(LIBRARY_NAME).dylib"
-	@mkdir -p "$(THEOS_STAGING_DIR)/usr/share/doc/com.pxx917144686.flex"
-	@cp ThirdPartyNotices/FLEX-LICENSE.txt ThirdPartyNotices/Capstone-LICENSE.txt "$(THEOS_STAGING_DIR)/usr/share/doc/com.pxx917144686.flex/"
-
-after-package::
-	@cp "$(THEOS_STAGING_DIR)/var/jb/Library/MobileSubstrate/DynamicLibraries/$(LIBRARY_NAME).dylib" "$(THEOS_PACKAGE_DIR)/$(LIBRARY_NAME)-$(PACKAGE_VERSION)-$(PACKAGE_ARCHITECTURE)-rootless.dylib"
+	@mkdir -p "$(THEOS_STAGING_DIR)/usr/share/doc/com.qiu7c.reflex"
+	@cp ThirdPartyNotices/FLEX-LICENSE.txt ThirdPartyNotices/Capstone-LICENSE.txt "$(THEOS_STAGING_DIR)/usr/share/doc/com.qiu7c.reflex/"

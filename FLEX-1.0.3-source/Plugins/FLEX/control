@@ -1,9 +1,8 @@
-Package: com.pxx917144686.flex
-Name: FLEX++
-Maintainer: pxx917144686
+Package: com.qiu7c.reflex
+Name: ReFlex
+Maintainer: qiu7c
 Version: 1.0.3
 Architecture: iphoneos-arm64
-Description: FLEX调试
-Author: FLEX Team & pxx917144686修改
+Description: UIKit 调试与局域网 MCP
 Section: Tweaks
 Depends: firmware (>= 9.0), mobilesubstrate

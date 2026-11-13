@@ -2,3 +2,5 @@
 
 FLEXGlobalsEntry *ReFlexPageExportEntry(void);
 FLEXGlobalsEntry *ReFlexLANSendEntry(void);
+
+FLEXGlobalsEntry *ReFlexCallTraceEntry(void);
